@@ -1,0 +1,106 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+```{r}
+library(readxl)
+library(factoextra)
+library(knitr)
+library(dplyr)
+library(PerformanceAnalytics)
+library(DataExplorer)
+library(cluster)
+library(clusterCrit)
+library(psych)
+library(usdm)
+library(ggplot2)
+library(raster)
+```
+
+```{r}
+data.a = read_xlsx("D:/UNI/PKL/LAPORAN/DATA/FIXED/Poverty R5.xlsx")
+str(data.a)
+```
+```{r}
+summary(data.a)
+```
+```{r}
+scaled = scale(data.a[-c(1)])
+
+data = tibble(
+  KECAMATAN = data.a$KECAMATAN,
+  as.data.frame(scaled)
+)
+
+str(data)
+```
+
+```{r}
+plot_correlation(data[-1])
+```
+```{r}
+df.num = as.data.frame(data[-1])
+vifcor(df.num, th = 10)
+```
+
+```{r}
+dist_matrix = dist(data[-1], method = "euclidean")
+```
+
+```{r}
+#AHC (complete)
+cluster.fn = hclust(dist_matrix, method = "complete")
+
+#dendrogram
+plot(cluster.fn)
+```
+
+```{r}
+#AHC (ward)
+cluster.wd2 = hclust(dist_matrix, method = "ward.D2")
+
+#dendrogram
+plot(cluster.wd2)
+```
+```{r}
+d.fn = cophenetic(cluster.fn)
+d.wd2 = cophenetic(cluster.wd2)
+c.fn = cor(dist_matrix,d.fn)
+c.wd2 = cor(dist_matrix,d.wd2)
+data.frame(c.fn, c.wd2)
+```
+```{r}
+evaluate_k = function(cl, k){
+  clust = cutree(cl, k = k)
+  dbi = intCriteria(as.matrix(data[-1]), clust, "Davies_Bouldin")$davies_bouldin
+  return(c(k = k, DBI = dbi))
+}
+
+results = do.call(rbind, lapply(3:6, function(k) evaluate_k(cluster.fn, k)))
+results
+```
+```{r}
+final_cluster = cutree(cluster.fn, k = 6)
+table(final_cluster)
+data.a$Cluster = final_cluster
+
+agregat = aggregate(data.a[-c(ncol(data.a))], list(Cluster = data.a$Cluster), mean)
+```
+```{r}
+KEC = readRDS("D:/UNI/SEMESTER 2/Analisis Data dan Visualisasi/gadm36_IDN_3_sp.rds")
+BANTUL = KEC[KEC$NAME_2 == "Bantul",]
+kec.bantul = BANTUL$NAME_3
+datkecbantul = read_xlsx("D:/UNI/PKL/LAPORAN/DATA/FIXED/cluster.xlsx")
+```
+
+```{r}
+dev.new(width=10, height=8)
+
+plot(BANTUL, col = c("#FCB245", "#9a3519", "#FCE205", "#FFFDD0",  "#ACB245", "white")[datkecbantul$Cluster], axes = TRUE, asp = 1, cex = 10, border = "black",main ="Cluster Mapping")
+text(BANTUL, datkecbantul$Kecamatan, cex = 0.45)
+legend("bottomright", legend = c("Cluster 1", "Cluster 2", "Cluster 3", "Cluster 4",  "Cluster 5", "Cluster 6"), col = c("#FCB245", "#9a3519", "#FCE205", "#FFFDD0",  "#ACB245", "white"),inset=.03, fill= c("#FCB245", "#9a3519", "#FCE205", "#FFFDD0",  "#ACB245" ,"white"), cex = 0.7, bty = "n")
+library(prettymapr)
+addnortharrow(pos = "topright",scale = 0.5,padin=c(0.55,0.15))
+addscalebar()
+```
